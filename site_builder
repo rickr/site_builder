@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+
+ACTION="$1"
+WORK_DIR="$2"
+
+# Order in which to apply templates
+TEMPLATE_ORDER='head.html body foot.html'
+
+# Name of page that has our page content
+CONTENT_PAGE_NAME='body'
+
+TEMPLATE_DIR="./templates"
+CONTENT_DIR="./content"
+POST_SCRIPT='./post_script.sh'
+
+COMPILED_DIR='./compiled'
+
+function usage(){
+  echo "Usage: $0 [init|compile] work_dir"
+}
+
+function notice(){
+  echo "  >> $*"
+}
+
+function die(){
+  echo "$0: $*"
+  usage
+  exit 1
+}
+
+function is_content(){
+  if [[ $1 == $CONTENT_PAGE_NAME ]]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+
+function init(){
+  notice "Initializing $WORK_DIR"
+  mkdir -p $TEMPLATE_DIR || die 'Unable to initialize'
+  mkdir -p $CONTENT_DIR || die 'Unable to initialize'
+  mkdir -p $COMPILED_DIR || die 'Unable to initialize'
+  install -m755 /dev/null $POST_SCRIPT
+
+  for page in $TEMPLATE_ORDER; do
+    if [[ $page != $CONTENT_PAGE_NAME ]]; then
+      touch $TEMPLATE_DIR/$page || die "Unable to create shared template"
+    fi
+  done
+
+  notice "Initialized $WORK_DIR"
+}
+
+function compile(){
+  notice "Compiling $WORK_DIR"
+  for page in $(find $CONTENT_DIR -type f); do
+    if [[ ! -f $page ]]; then
+      continue
+    fi
+
+    # I've had too many beers to think about this more
+    # Convert our content path to the compiled path
+    output="$(echo $page | sed 's/content/compiled/')"
+    notice "Compiling page $output"
+
+    # Clear our output
+    output_dir=$(dirname $output)
+    if [[ ! -d $output_dir ]]; then
+      mkdir -p $output_dir
+    fi
+    echo > $output
+
+    for template in $TEMPLATE_ORDER; do
+      if ! is_content $template; then
+        cat $TEMPLATE_DIR/$template >> $output
+      else
+        cat $page >> $output
+      fi
+    done
+
+    notice "Running post script"
+    $POST_SCRIPT $output
+    notice "Compiled page $output"
+  done
+}
+
+if [[ -z $WORK_DIR ]]; then
+  die 'work dir required'
+fi
+
+if [[ ! -d  $WORK_DIR ]]; then
+  mkdir -p "$WORK_DIR" || die "Unable to create $WORK_DIR"
+fi
+
+cd $WORK_DIR || die "work_dir $WORK_DIR does not exist"
+
+
+case $ACTION in 
+  'init') init $WORK_DIR ;;
+  'compile') compile $WORK_DIR ;;
+  *) die 'Unknown action';;
+esac
+
+
